@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block meat %}
+<div class="content">
+            <div class="content-subject">{% block subj %} {{singleSubj}} {% endblock %}</div> <!-- accesses the subject variable for each instance (record) in the contents Table (which is referenced by contents)-->
+            <pre class="content-body">{% block content %} {{singleContent}} {% endblock %}</pre> <!-- same idea...-->
+        </div>
+        <br>   
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block meat %}
+<h1>Edit this wiki</h1>
+<br />
+    <form method = 'post'>
+        <textarea name='markup'>{{markup}}</textarea>
+        <br />
+        <div><input type = "submit" value = "Submit"></div>
+        <div>{{error}}</div>
+        <br />
+    </form>
+
+{% endblock %}

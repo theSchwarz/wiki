@@ -1,0 +1,24 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html lang="en">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    {% block head %}
+    <link rel="stylesheet" href="style.css" />
+    <title>{% block title %}Super Wiki{% endblock %}</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="author" content="Y.CORP.YAHOO.COM\joshsch">
+    <link type="text/css" rel="stylesheet" href="/stylesheets/blog.css" />
+    <!-- Date: 2013-07-07 -->
+    {% endblock %}
+</head>
+<body>
+    {% block page_header %}
+    <a href= "{{logURL}}">{{logState}}</a> | <a href="{{editURL}}">{{editState}}</a>
+    {% endblock %}
+    <div id="content">{% block meat %}{% endblock %}</div>
+    <div id="footer">
+        {% block footer %}
+        &copy; Copyright 2013 by <a href="http://www.twitter.com/jschwarz9/">Josh Schwarzapel</a>.
+        {% endblock %}
+    </div>
+</body>

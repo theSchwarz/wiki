@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block page_header %}
+<h1>Signup</h1>
+<br />
+{% endblock %}
+
+{% block meat %}
+    <form method = 'post'>
+        <span>email</span>
+        <input type = "text" name = "email" value = {{email}}>
+        <br />
+        <span>username</span>
+        <input type = "text" name = "username" value = {{username}}>
+        <br />
+        <span>password</span>
+        <input type = "text" name = "password" value = {{password}}>
+        <br />
+        <span>verify</span>
+        <input type = "text" name = "verify" value = {{verify}}>
+        <br />
+        <div><input type = "submit" value = "Click Me"></div>
+        <div>{{error}}</div>
+        <br />
+    </form>
+
+{% endblock %}
