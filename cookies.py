@@ -2,12 +2,18 @@ import hashlib
 import sys
 import os
 
-#To Do: Use bcrypt instead of hashlib. 
+#To Dos: 
+#1) Use bcrypt instead of hashlib
+#2) make cookies expire
+#3) dont expose readablevalues in cookies.
+#4) clean up naming of functions. some not intuitive.
+#5) put server secret elsewhere for security, not sure where though.
+
 #IMPORTANT: Everything below assumes cookies where format is "readableValue|md5hash". e.g. "3|aslkdfksjdsdf"
 
 #------Below are cookie functions that should be used by all cookies that get set------
 
-serverSecretString = "thisIsMyServerSideSecretAndItsSoooSecure"
+serverSecretString = "thisIsMyServerSideSecretAndItsSoooSecure" #I 
 
 def get_usable_cookie_value(appEngineRequestObj, cookieName, defaultValue):
     #returns a programmable cookie value of the same type as the default value. Grabs this value from the user if it's secure,
@@ -20,7 +26,6 @@ def get_usable_cookie_value(appEngineRequestObj, cookieName, defaultValue):
 def get_cookie_string(appEngineRequestObj, cookieName, defaultValue):
     #checks to see if a cookie value was sent by the user in their request AND if it's secure. Returns a secure value.
     #this is a little ghetto. should change the name to be more clear.
-
     cookieString = appEngineRequestObj.cookies.get(cookieName,defaultValue)
     if is_valid(cookieString):
         return cookieString, True

@@ -1,4 +1,10 @@
-#TO DO: redirect from /login to the correct place. Clean up code.
+#TO DOs:
+#1) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
+#2) Make all of my classes use the generic cache+db write and read functions (Wiki, Edit do this already, but signup/login do not)
+#3) Learn about parents/ancestors in db stuff. Seems important, but sort of brushed over it.
+#4) Modify db/cache write handler function so that it can do a conditional check before writing as part of a transaction.
+
+
 
 import webapp2
 import sys 
@@ -58,8 +64,6 @@ class Handler(webapp2.RequestHandler):
         self.page_id = requestObj.path
 
     def log_user_in(self,userObj):
-            #to do: set cookies that expire.
-            #to do: make cookies more secure.
             real_username = userObj.username
             readableUsernameCookie = cookies.get_usable_cookie_value(self.request,real_username,"")
             readableUsernameCookie = real_username
@@ -71,14 +75,11 @@ class Handler(webapp2.RequestHandler):
     def get(self):
         self.response.out.write("no GET method defined!")
 
-    def cache_and_db_write(self, cacheKey, dbRecord, dbQuery): #query is the query to run to update the cachekey
-        if not cacheKey:
-            cacheKey = '/'
+    def cache_and_db_write(self, cacheKey, dbRecord): 
+        #query is the query to run to update the cachekey
         logging.info("writing to the database")
         foo = dbRecord.put()
-        print foo
         logging.info("reading from the database")
-        #cacheObj = db.GqlQuery(dbQuery)
         cacheObj = dbRecord
         logging.info("setting memcache with %s, %s" % (cacheKey, cacheObj))
         memcache.set(cacheKey, cacheObj) 
@@ -157,16 +158,12 @@ class EditPage(Handler):
         self.startup(self.request)
         markup = self.request.get('markup')
         if not markup:
-            #self.render("edit.html", logState = self.logState, logURL = self.logURL, \
-                         #editState = "view", editURL = "%s" % self.page_id, error = "No blank submissions plz!")
-            markup = " "
-            self.redirect("%s" % self.page_id)
+            self.render("edit.html", logState = self.logState, logURL = self.logURL, \
+                         editState = "view", editURL = "%s" % self.page_id, error = "No blank submissions plz!")
         else:
             dbObj = Entry(markup = markup, url = self.page_id, key_name = self.page_id)
-            self.cache_and_db_write(self.page_id, dbObj, "Select * from Entry where url = '%s'" % self.page_id)
+            self.cache_and_db_write(self.page_id, dbObj)
             self.redirect("%s" % self.page_id)
-        #needs to be unique record per url.
-        #what happens if i spoof the url?
 
 class Signup(Handler):
 
