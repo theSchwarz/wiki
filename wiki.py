@@ -50,18 +50,23 @@ class Handler(webapp2.RequestHandler):
         else:
             self.logState = "logout"
             self.logURL = "/logout?refURL=%s" % self.request.path[1:]
-            return cookies.get_usable_cookie_value(self.request, "username", "")
+            self.username = cookies.get_usable_cookie_value(self.request, "username", "")
+            return self.username
 
     def startup(self, requestObj):
-        logging.info("path is %s" % requestObj.path)
-        self.page_id = requestObj.path
-        if "/_edit" in self.page_id:
-            self.page_id = self.page_id[6:]
+        self.page_id = self.set_page_id(requestObj)
         logging.info("self.page_id is %s" % self.page_id)
+        self.set_history_URL()
         self.login_check()
 
-    def set_page_id(requestObj):
-        self.page_id = requestObj.path
+    def set_page_id(self, requestObj):
+        logging.info("path is %s" % requestObj.path)
+        page_id = requestObj.path
+        if "/_edit" in page_id:
+            page_id = page_id[6:]
+        if "/_history" in page_id:
+            page_id = page_id[9:]
+        return page_id
 
     def log_user_in(self,userObj):
             real_username = userObj.username
@@ -83,6 +88,9 @@ class Handler(webapp2.RequestHandler):
         cacheObj = dbRecord
         logging.info("setting memcache with %s, %s" % (cacheKey, cacheObj))
         memcache.set(cacheKey, cacheObj) 
+
+    def set_history_URL(self):
+        self.historyURL = "/_history%s" % self.page_id
 
     def read_from_cache_or_db(self, cacheKey, dbQuery, firstOrAll): 
     #firstOrAll string specifies whether you want first result from a DB query, or the full list of results.
@@ -117,14 +125,13 @@ class Handler(webapp2.RequestHandler):
         return val
 
 class Entry (db.Model):
-    #url is the unique key. When creating a new entry, specify 'key_name = url'
-    #e.g. foo = Entry (markup='<h1>Hi</h1>', url = urlPath, key_name = urlPath)
     markup = db.TextProperty(required = True)
     created = db.DateTimeProperty(auto_now_add = True)
     url = db.StringProperty(required = True)
+    createdBy = db.StringProperty(required = True)
 
 class UserDB(db.Model):
-    #username is the unique key. When creating a new Uuser, specify 'key_name = username'
+    #username is the unique key. When creating a new user, specify 'key_name = username'
     #e.g. foo = Entry (username=usernameStr, pw = pwStr, key_name = usernameStr)
     username = db.StringProperty(required = True)
     password = db.StringProperty(required = True)
@@ -136,7 +143,8 @@ class WikiPage(Handler):
         markup = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s'" % self.page_id, "first")
         if markup:
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
-                    editState = "edit", editURL = "/_edit%s" % self.page_id, markup = markup.markup)
+                    editState = "edit", editURL = "/_edit%s" % self.page_id, \
+                    historyURL = self.historyURL, markup = markup.markup)
         else:
             self.redirect("/_edit%s" % self.page_id)
         
@@ -149,9 +157,11 @@ class EditPage(Handler):
         markupText = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s'" % self.page_id, "first")
         if markupText:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
-                        editState = "view", editURL = "%s" % self.page_id, markup = markupText.markup)
+                        editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
+                        markup = markupText.markup)
         else:
-            self.render("edit.html", logState = self.logState, logURL = self.logURL, editState = "view", editURL = "%s" % self.page_id)
+            self.render("edit.html", logState = self.logState, logURL = self.logURL, editState = "view", \
+                historyURL = self.historyURL, editURL = "%s" % self.page_id)
         
 
     def post(self, dont_use_me):
@@ -159,11 +169,22 @@ class EditPage(Handler):
         markup = self.request.get('markup')
         if not markup:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
-                         editState = "view", editURL = "%s" % self.page_id, error = "No blank submissions plz!")
+                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
+                         error = "No blank submissions plz!")
         else:
-            dbObj = Entry(markup = markup, url = self.page_id, key_name = self.page_id)
+            dbObj = Entry(markup = markup, url = self.page_id, createdBy = self.username)
             self.cache_and_db_write(self.page_id, dbObj)
             self.redirect("%s" % self.page_id)
+
+class HistoryPage(Handler):
+
+    def get(self, dont_use_me):
+        query = "Select * from Entry order by createdBy desc"
+        historyList = self.read_from_cache_or_db("history_%s" % self.page_id, query, "all") #this is going to break
+        #To Do:
+        #1) Create history template.
+        #2) Put HistoryPage in URL mapping
+        #3) Make sure history gets cached appropriately. 
 
 class Signup(Handler):
 
