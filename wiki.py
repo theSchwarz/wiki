@@ -1,4 +1,6 @@
 #TO DOs:
+#-1) Fix read_from_cache_and_db to operate correctly.
+#0) Make sure history prints out in order.
 #1) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
 #2) Make all of my classes use the generic cache+db write and read functions (Wiki, Edit do this already, but signup/login do not)
 #3) Learn about parents/ancestors in db stuff. Seems important, but sort of brushed over it.
@@ -59,6 +61,9 @@ class Handler(webapp2.RequestHandler):
         self.set_history_URL()
         self.login_check()
 
+    def set_history_URL(self):
+        self.historyURL = "/_history%s" % self.page_id
+
     def set_page_id(self, requestObj):
         logging.info("path is %s" % requestObj.path)
         page_id = requestObj.path
@@ -81,16 +86,22 @@ class Handler(webapp2.RequestHandler):
         self.response.out.write("no GET method defined!")
 
     def cache_and_db_write(self, cacheKey, dbRecord): 
-        #query is the query to run to update the cachekey
+        #works when one cacheKey and where value is a simple record. 
+        #doesn't work well when need to update multiple caches, or where cache value 
+        #is a list of items. Plan is to accept a list of key value pairs where key is 
+        #cacheKey and values are results of dbqueries. Right now I'm using a combo of this 
+        #+ refresh_cache below, which is ghetto.
+
         logging.info("writing to the database")
         foo = dbRecord.put()
         logging.info("reading from the database")
         cacheObj = dbRecord
         logging.info("setting memcache with %s, %s" % (cacheKey, cacheObj))
-        memcache.set(cacheKey, cacheObj) 
+        memcache.set(cacheKey, cacheObj)
 
-    def set_history_URL(self):
-        self.historyURL = "/_history%s" % self.page_id
+    def refresh_cache(self, cacheKey, dbQuery):
+        dbObj = db.GqlQuery(dbQuery)
+        memcache.set(cacheKey,dbObj)
 
     def read_from_cache_or_db(self, cacheKey, dbQuery, firstOrAll): 
     #firstOrAll string specifies whether you want first result from a DB query, or the full list of results.
@@ -110,12 +121,12 @@ class Handler(webapp2.RequestHandler):
                 return False
             else:
                 logging.info('%s is result from DB.' % data)
-                if getOrFetch == "first":
+                if firstOrAll == "first":
                     memcache.set(cacheKey,data.get())
                     return data.get()
-                elif getOrFetch == "all":
-                    memcache.set(cacheKey,data.fetch())
-                    return data.fetch()
+                elif firstOrAll == "all":
+                    memcache.set(cacheKey,list(data.run())) #pickle cannot make sense of GAE iterable for memcache storage. Need to convert to a list.
+                    return list(data.run())
 
     def get_query_param(self, getRequestObj, key, defaultStr):
         if key in getRequestObj.params:
@@ -140,7 +151,8 @@ class UserDB(db.Model):
 class WikiPage(Handler):
     def get(self, dont_use_me):
         self.startup(self.request)
-        markup = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s'" % self.page_id, "first")
+        print self.page_id
+        markup = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s' order by createdBy desc" % self.page_id, "first")
         if markup:
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
                     editState = "edit", editURL = "/_edit%s" % self.page_id, \
@@ -154,7 +166,7 @@ class EditPage(Handler):
         self.startup(self.request)
         if self.logState != 'logout':
             self.redirect('/login/?refURL=/_edit%s' % self.page_id)
-        markupText = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s'" % self.page_id, "first")
+        markupText = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s' order by createdBy desc" % self.page_id, "first")
         if markupText:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
@@ -174,17 +186,30 @@ class EditPage(Handler):
         else:
             dbObj = Entry(markup = markup, url = self.page_id, createdBy = self.username)
             self.cache_and_db_write(self.page_id, dbObj)
+            query = "Select * from Entry where url = '%s' order by createdBy desc" % self.page_id
+            self.refresh_cache("history_%s" % self.page_id, query)
             self.redirect("%s" % self.page_id)
 
 class HistoryPage(Handler):
 
     def get(self, dont_use_me):
-        query = "Select * from Entry order by createdBy desc"
-        historyList = self.read_from_cache_or_db("history_%s" % self.page_id, query, "all") #this is going to break
+        self.startup(self.request)
+        query = "Select * from Entry where url = '%s' order by createdBy desc" % self.page_id
+        versions = self.read_from_cache_or_db("history_%s" % self.page_id, query, "all") 
+        logging.info("versions is %s" % versions)
+        if not versions:
+            logging.info("if not versions is being triggered")
+            self.render("history.html", logState = self.logState, logURl = self.logURL, \
+                        editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
+                        error = "No history for this page yet")
+        else:
+            logging.info("versions else statement")
+            self.render("history.html", logState = self.logState, logURl = self.logURL, \
+                        editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
+                        versions = versions)
+
         #To Do:
-        #1) Create history template.
-        #2) Put HistoryPage in URL mapping
-        #3) Make sure history gets cached appropriately. 
+        #1) Make history show in descending order.
 
 class Signup(Handler):
 
@@ -270,8 +295,8 @@ class Flush(Handler):
 PAGE_RE = r'(?:/([a-zA-Z0-9_-]+/?)*)'
 application = webapp2.WSGIApplication([ (r"/signup/?", Signup), \
                                        (r"/login/?",Login), (r"/logout/?",Logout), \
-                                       (r"/flush/?", Flush), ('/_edit' + PAGE_RE, EditPage), (PAGE_RE, WikiPage)  \
-                                       ], debug=True) 
+                                       (r"/flush/?", Flush), ('/_edit' + PAGE_RE, EditPage), \
+                                       ('/_history' + PAGE_RE, HistoryPage), (PAGE_RE, WikiPage)], debug=True) 
                                        
 def handle_404(request, response, exception):
     response.write("can't find that url")
