@@ -26,7 +26,8 @@ import jinja2
 import saltyPassword
 
 template_dir = os.path.join(os.path.dirname(__file__), "templates")
-jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(template_dir), autoescape = False) 
+jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(template_dir), autoescape = False, extensions=['jinja2.ext.autoescape']) 
+
 #autoescape set to False since this is a wiki. does NOT do anything to help server side escaping.
 
 #generic handler class for anytime you want to write a web page. can be used for both get and post.
