@@ -1,6 +1,5 @@
 #TO DOs:
-#-1) Fix read_from_cache_and_db to operate correctly.
-#0) Make sure history prints out in order.
+#-1) Fix write_to_cache_and_db to operate correctly.
 #1) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
 #2) Make all of my classes use the generic cache+db write and read functions (Wiki, Edit do this already, but signup/login do not)
 #3) Learn about parents/ancestors in db stuff. Seems important, but sort of brushed over it.
@@ -152,7 +151,7 @@ class WikiPage(Handler):
     def get(self, dont_use_me):
         self.startup(self.request)
         print self.page_id
-        markup = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s' order by createdBy desc" % self.page_id, "first")
+        markup = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s' order by created desc" % self.page_id, "first")
         if markup:
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
                     editState = "edit", editURL = "/_edit%s" % self.page_id, \
@@ -166,7 +165,7 @@ class EditPage(Handler):
         self.startup(self.request)
         if self.logState != 'logout':
             self.redirect('/login/?refURL=/_edit%s' % self.page_id)
-        markupText = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s' order by createdBy desc" % self.page_id, "first")
+        markupText = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s' order by created desc" % self.page_id, "first")
         if markupText:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
@@ -186,7 +185,7 @@ class EditPage(Handler):
         else:
             dbObj = Entry(markup = markup, url = self.page_id, createdBy = self.username)
             self.cache_and_db_write(self.page_id, dbObj)
-            query = "Select * from Entry where url = '%s' order by createdBy desc" % self.page_id
+            query = "Select * from Entry where url = '%s' order by created desc" % self.page_id
             self.refresh_cache("history_%s" % self.page_id, query)
             self.redirect("%s" % self.page_id)
 
@@ -194,7 +193,7 @@ class HistoryPage(Handler):
 
     def get(self, dont_use_me):
         self.startup(self.request)
-        query = "Select * from Entry where url = '%s' order by createdBy desc" % self.page_id
+        query = "Select * from Entry where url = '%s' order by created desc" % self.page_id
         versions = self.read_from_cache_or_db("history_%s" % self.page_id, query, "all") 
         logging.info("versions is %s" % versions)
         if not versions:
@@ -207,9 +206,6 @@ class HistoryPage(Handler):
             self.render("history.html", logState = self.logState, logURl = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
                         versions = versions)
-
-        #To Do:
-        #1) Make history show in descending order.
 
 class Signup(Handler):
 
