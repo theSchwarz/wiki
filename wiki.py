@@ -1,11 +1,11 @@
 #TO DOs:
+#Something is really fucked up with how I'm querying after I made the ancestor change. I think what I need to do is query
+#for where ancestor is the page_id? Just play with it and you'll see the fuckedness.
+#perhaps I need to create a record for pages, and make each entry a child of the specific page entity
+
 #-1) Fix write_to_cache_and_db to operate correctly.
 #1) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
 #2) Make all of my classes use the generic cache+db write and read functions (Wiki, Edit do this already, but signup/login do not)
-#3) Learn about parents/ancestors in db stuff. Seems important, but sort of brushed over it.
-#4) Modify db/cache write handler function so that it can do a conditional check before writing as part of a transaction.
-
-
 
 import webapp2
 import sys 
@@ -36,6 +36,7 @@ class Handler(webapp2.RequestHandler):
 
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
+
         
     def render_str(self, template, **params):
         t = jinja_env.get_template(template)
@@ -43,6 +44,9 @@ class Handler(webapp2.RequestHandler):
         
     def render(self, template, **kw):
         self.write(self.render_str(template, **kw))
+
+    def define_common_queries(self):
+       self.pageQuery = "Select * from Entry where url = '%s' and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, self.page_id)
 
     def login_check(self):
         if not cookies.get_cookie_string(self.request,"username","")[1]:
@@ -53,6 +57,8 @@ class Handler(webapp2.RequestHandler):
             self.logState = "logout"
             self.logURL = "/logout?refURL=%s" % self.request.path[1:]
             self.username = cookies.get_usable_cookie_value(self.request, "username", "")
+            logging.info("self.username is %s" % self.username)
+            logging.info("self.username is of type %s" % type(self.username))
             return self.username
 
     def startup(self, requestObj):
@@ -60,6 +66,7 @@ class Handler(webapp2.RequestHandler):
         logging.info("self.page_id is %s" % self.page_id)
         self.set_history_URL()
         self.login_check()
+        self.define_common_queries()
 
     def set_history_URL(self):
         self.historyURL = "/_history%s" % self.page_id
@@ -85,35 +92,25 @@ class Handler(webapp2.RequestHandler):
     def get(self):
         self.response.out.write("no GET method defined!")
 
-    def cache_and_db_write(self, cacheKey, dbRecord): 
-        #works when one cacheKey and where value is a simple record. 
-        #doesn't work well when need to update multiple caches, or where cache value 
-        #is a list of items. Plan is to accept a list of key value pairs where key is 
-        #cacheKey and values are results of dbqueries. Right now I'm using a combo of this 
-        #+ refresh_cache below, which is ghetto.
-
+    def cache_and_db_write(self, dbRecord, cacheDict): 
+        #cacheDict should be mappings of strings like {cacheKey: GqlQuery} representing the different
+        #caches you want to update with each write, and the corresponding gql query you want to run 
+        #to generate the cache value, which will always be a GqlQuery object.
         logging.info("writing to the database")
-        foo = dbRecord.put()
-        logging.info("reading from the database")
-        cacheObj = dbRecord
-        logging.info("setting memcache with %s, %s" % (cacheKey, cacheObj))
-        memcache.set(cacheKey, cacheObj)
-
-    def refresh_cache(self, cacheKey, dbQuery):
-        dbObj = db.GqlQuery(dbQuery)
-        memcache.set(cacheKey,dbObj)
+        try:
+            foo = dbRecord.put()
+        except:
+            print "DB write not done yet!"
+        for key in cacheDict:
+            logging.info("setting memcache with %s, %s" % (key, cacheDict[key]))
+            memcache.set(key, db.GqlQuery(cacheDict[key]))
 
     def read_from_cache_or_db(self, cacheKey, dbQuery, firstOrAll): 
     #firstOrAll string specifies whether you want first result from a DB query, or the full list of results.
     #Should be "first" or "all".
 
-        logging.info('reading %s from memcache' % cacheKey)
-        val = memcache.get(cacheKey)
-        if val:
-            logging.info('%s was found in memcache with value %s' % (cacheKey, val))
-            return val
-
-        else:
+        memcacheVal = self.check_memcache(cacheKey, firstOrAll)
+        if not memcacheVal:
             logging.info('%s was NOT found in memcache. Checking DB.' % cacheKey)
             data = db.GqlQuery(dbQuery)
             if data.count() < 1:
@@ -127,6 +124,25 @@ class Handler(webapp2.RequestHandler):
                 elif firstOrAll == "all":
                     memcache.set(cacheKey,list(data.run())) #pickle cannot make sense of GAE iterable for memcache storage. Need to convert to a list.
                     return list(data.run())
+        else:
+            return memcacheVal
+
+    def check_memcache(self, cacheKey, firstOrAll):
+        logging.info('reading %s from memcache' % cacheKey)
+        val = memcache.get(cacheKey)
+        if val:
+            logging.info('found %s in memcache. It is %s' % (cacheKey, val))
+            if firstOrAll == "first":
+                return val.get()
+            elif firstOrAll == "all":
+                return list(val.run())
+        else:
+            logging.info('did not find %s in memcache' % cacheKey)
+            return
+
+    def refresh_cache(self, cacheKey, dbQuery):
+        dbObj = db.GqlQuery(dbQuery)
+        memcache.set(cacheKey,dbObj)
 
     def get_query_param(self, getRequestObj, key, defaultStr):
         if key in getRequestObj.params:
@@ -135,11 +151,20 @@ class Handler(webapp2.RequestHandler):
             val = defaultStr
         return val
 
+    def get_user_obj(self, username): 
+        #used to set parent in datastore writes
+        return UserDB.get_by_key_name(username)
+
 class Entry (db.Model):
+    #When creating one, always specify the corresponding URL as the parent.
+    #This maintains consistency between writes to Entries and reads from Entries.
     markup = db.TextProperty(required = True)
     created = db.DateTimeProperty(auto_now_add = True)
     url = db.StringProperty(required = True)
     createdBy = db.StringProperty(required = True)
+
+class URL(db.Model):
+    url = db.StringProperty(required = True)
 
 class UserDB(db.Model):
     #username is the unique key. When creating a new user, specify 'key_name = username'
@@ -151,9 +176,10 @@ class UserDB(db.Model):
 class WikiPage(Handler):
     def get(self, dont_use_me):
         self.startup(self.request)
-        print self.page_id
-        markup = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s' order by created desc" % self.page_id, "first")
+        #query = "Select * from Entry where url = '%s' and ancestor is Key('UserDB', '%s') order by created desc" % (self.page_id, self.username)
+        markup = self.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
         if markup:
+            logging.info("Wiki page: markup is %s and markup.markup is %s" % (markup, markup.markup))
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
                     editState = "edit", editURL = "/_edit%s" % self.page_id, \
                     historyURL = self.historyURL, markup = markup.markup)
@@ -166,7 +192,8 @@ class EditPage(Handler):
         self.startup(self.request)
         if self.logState != 'logout':
             self.redirect('/login/?refURL=/_edit%s' % self.page_id)
-        markupText = self.read_from_cache_or_db(self.page_id, "Select * from Entry where url = '%s' order by created desc" % self.page_id, "first")
+        #query = "Select * from Entry where url = '%s' and ancestor is Key('UserDB', '%s') order by created desc" % (self.page_id, self.username)
+        markupText = self.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
         if markupText:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
@@ -184,18 +211,23 @@ class EditPage(Handler):
                          editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
                          error = "No blank submissions plz!")
         else:
-            dbObj = Entry(markup = markup, url = self.page_id, createdBy = self.username)
-            self.cache_and_db_write(self.page_id, dbObj)
-            query = "Select * from Entry where url = '%s' order by created desc" % self.page_id
-            self.refresh_cache("history_%s" % self.page_id, query)
+            urlQuery = "select * from URL where url = '%s'" % self.page_id
+            urlObj = self.read_from_cache_or_db(self.page_id, urlQuery, "first")
+            if not urlObj:
+                urlObj = URL(url = self.page_id, key_name = self.page_id)
+                self.cache_and_db_write(urlObj, {'url_%s' % self.page_id:urlQuery})
+            dbObj = Entry(parent = urlObj.key(), markup = markup, url = self.page_id, createdBy = self.username)
+            #query = "Select * from Entry where url = '%s' and ancestor is Key('UserDB', '%s') order by created desc" % (self.page_id, self.username) 
+            cacheDict = {self.page_id:self.pageQuery, "history_%s" % self.page_id:self.pageQuery}
+            self.cache_and_db_write(dbObj,cacheDict) 
             self.redirect("%s" % self.page_id)
 
 class HistoryPage(Handler):
 
     def get(self, dont_use_me):
         self.startup(self.request)
-        query = "Select * from Entry where url = '%s' order by created desc" % self.page_id
-        versions = self.read_from_cache_or_db("history_%s" % self.page_id, query, "all") 
+        #query = "Select * from Entry where url = '%s' order by created desc" % self.page_id
+        versions = self.read_from_cache_or_db("history_%s" % self.page_id, self.pageQuery, "all") 
         logging.info("versions is %s" % versions)
         if not versions:
             logging.info("if not versions is being triggered")
@@ -231,7 +263,7 @@ class Signup(Handler):
 
         refURL = str(self.get_query_param(self.request, 'refURL', '/'))
 
-        #need all of the escaping here bc auto-escape is set to false globally bc this is a wiki :).
+        #should do all of this escaping in a template later using autoescape true/false
         if password != verify:
             self.render_main(cgi.escape(email),cgi.escape(username),cgi.escape(password),cgi.escape(verify),"Make sure your passwords match!")
         elif not password or not verify or not username:
