@@ -1,7 +1,11 @@
 #TO DOs:
-#0) Fix login bug. May relate to #1
+#0) Fix login submit bug where I don't redirect. May relate to #1.
 #1) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
-#2) Make all of my classes use the generic cache+db write and read functions (Wiki, Edit do this already, but signup/login do not)
+#2) Move db stuff into separate model.
+#3) Clean up the Signup function so that writes are correct. Right now I don't even check if that user exists (Did that a while ago)
+#4) Move signup stuff out of here.
+#5) Integrate css.
+#6) Integrate some js just for kicks.
 
 import webapp2
 import sys 
@@ -146,7 +150,7 @@ class Handler(webapp2.RequestHandler):
             return
 
     def define_common_queries(self):
-       #Should probably do this in a module.
+       #Should probably define these in a module. e.g. queries.pageQuery
        self.pageQuery = "Select * from Entry where url = '%s' and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, self.page_id)
        self.urlQuery = "select * from URL where url = '%s'" % self.page_id
 
@@ -203,6 +207,7 @@ class EditPage(Handler):
         
 
     def post(self, dont_use_me):
+        #I should factor out all of the common params in some way. e.g. logState and logURL.
         self.startup(self.request)
         markup = self.request.get('markup')
         if not markup:
