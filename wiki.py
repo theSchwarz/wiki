@@ -47,12 +47,13 @@ class Handler(webapp2.RequestHandler):
         if not cookies.get_cookie_string(self.request,"username","")[1]:
             self.logState = "login"
             self.logURL = "/login?refURL=%s" % self.request.path[1:]
+            logging.info("User is not logged in. Checking for %s" % self.page_id)
             return False
         else:
             self.logURL = "/logout?refURL=%s" % self.request.path[1:]
             self.username = cookies.get_usable_cookie_value(self.request, "username", "")
             self.logState = "(%s) logout" % self.username
-            logging.info("self.username is %s" % self.username)
+            logging.info("User is logged in. self.username is %s" % self.username)
             return self.username
 
     def startup(self, requestObj):
@@ -82,10 +83,10 @@ class Handler(webapp2.RequestHandler):
         return val
 
     def log_user_in(self,userObj):
-            real_username = userObj.username
-            readableUsernameCookie = cookies.get_usable_cookie_value(self.request,real_username,"")
-            readableUsernameCookie = real_username
-            cookies.set_secure_cookie(self.response, "username", readableUsernameCookie, "/")
+        real_username = userObj.username
+        readableUsernameCookie = cookies.get_usable_cookie_value(self.request,real_username,"")
+        readableUsernameCookie = real_username
+        cookies.set_secure_cookie(self.response, "username", readableUsernameCookie, "/")
 
     def log_user_out(self):
         cookies.delete_cookie(self.request, self.response, "username","/")
@@ -130,11 +131,11 @@ class Handler(webapp2.RequestHandler):
         else:
             logging.info('%s is result from DB.' % data)
             if firstOrAll == "first":
-                memcache.set(cacheKey,data.get())
+                memcache.set(cacheKey,data)
                 return data.get()
             elif firstOrAll == "all":
-                memcache.set(cacheKey,list(data.run())) #pickle cannot make sense of GAE iterable for memcache storage. Need to convert to a list.
-                return list(data.run())
+                memcache.set(cacheKey,data) #pickle cannot make sense of GAE iterable for memcache storage. Need to convert to a list.
+                return data.run()
 
     def check_memcache(self, cacheKey, firstOrAll):
         logging.info('reading %s from memcache' % cacheKey)
@@ -187,7 +188,7 @@ class WikiPage(Handler):
         self.startup(self.request)
         markup = self.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
         if markup:
-            logging.info("Wiki page: markup is %s and markup.markup is %s" % (markup, markup.markup))
+            #logging.info("Wiki page: markup is %s and markup.markup is %s" % (markup, markup.markup))
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
                     editState = "edit", editURL = "/_edit%s" % self.page_id, \
                     historyURL = self.historyURL, markup = markup.markup)
@@ -198,7 +199,7 @@ class WikiPage(Handler):
 class EditPage(Handler):
     def get(self, dont_use_me):
         self.startup(self.request)
-        if self.logState != 'logout':
+        if self.logState == 'login':
             self.redirect('/login/?refURL=/_edit%s' % self.page_id)
         markupText = self.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
         if markupText:
@@ -310,10 +311,12 @@ class Login(Handler):
 
         user_entity = UserDB.get_by_key_name(username)
         if user_entity and saltyPassword.is_valid_password(password,user_entity):
+            logging.info('valid username and password found')
             self.log_user_in(user_entity)
-            refURL = str(self.get_query_param(self.request, 'refURL', '/'))
-            logging.info('refURL IS %s' % refURL)
-            self.redirect(refURL)   
+            #refURL = str(self.get_query_param(self.request, 'refURL', '/'))
+            refURL = "/"
+            logging.info('refURL is %s' % refURL)
+            self.redirect('/')   
 
         else:
             error = "invalid username/password combination - 1"
