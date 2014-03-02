@@ -77,6 +77,7 @@ class Handler(webapp2.RequestHandler):
 
     def get_query_param(self, getRequestObj, key, defaultStr):
         if key in getRequestObj.params:
+            logging.info("%s is %s" % (key,getRequestObj.params[key]))
             val = getRequestObj.params[key]
         else:
             val = defaultStr
@@ -313,10 +314,9 @@ class Login(Handler):
         if user_entity and saltyPassword.is_valid_password(password,user_entity):
             logging.info('valid username and password found')
             self.log_user_in(user_entity)
-            #refURL = str(self.get_query_param(self.request, 'refURL', '/'))
-            refURL = "/"
+            refURL = str(self.get_query_param(self.request, 'refURL', '/'))
             logging.info('refURL is %s' % refURL)
-            self.redirect('/')   
+            self.redirect(refURL)   
 
         else:
             error = "invalid username/password combination - 1"
