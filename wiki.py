@@ -49,9 +49,9 @@ class Handler(webapp2.RequestHandler):
             self.logURL = "/login?refURL=%s" % self.request.path[1:]
             return False
         else:
-            self.logState = "logout"
             self.logURL = "/logout?refURL=%s" % self.request.path[1:]
             self.username = cookies.get_usable_cookie_value(self.request, "username", "")
+            self.logState = "(%s) logout" % self.username
             logging.info("self.username is %s" % self.username)
             return self.username
 
@@ -117,7 +117,7 @@ class Handler(webapp2.RequestHandler):
 
         memcacheVal = self.check_memcache(cacheKey, firstOrAll)
         if not memcacheVal:
-            return check_db(cacheKey, dbQuery, firstOrAll)
+            return self.check_db(cacheKey, dbQuery, firstOrAll)
         else:
             return memcacheVal
 
