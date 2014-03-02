@@ -1,11 +1,8 @@
 {% extends "base.html" %}
 
-{% block page_header %}
-<h1>Signup</h1>
-<br />
-{% endblock %}
-
 {% block meat %}
+    <h1>Signup</h1>
+    <p><a href="/signin">Sign in instead</a></p>
     <form method = 'post'>
         <span>email</span>
         <input type = "text" name = "email" value = {{email}}>

@@ -269,13 +269,16 @@ class Signup(Handler):
     #   - In a perfect world, we'd wait for a response back from the db saying that the write was successful before setting the cookie.
 
     def render_main(self, email="s", username="s", password="s",verify="s", error=""):
-        kwargs = {"email":email, "username":username, "password":password, "verify":verify, "error":error}
+        kwargs = {"email":email, "username":username, "password":password, "verify":verify, "error":error, \
+                  "logState":self.logState, "logURl": self.logURL}
         self.render("signup.html",**kwargs)
 
     def get(self):
+        self.startup(self.request)
         self.render_main()
 
     def post(self):
+        self.startup(self.request)
         email = self.request.get("email")
         username = self.request.get("username")
         password = self.request.get("password")
