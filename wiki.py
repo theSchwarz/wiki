@@ -192,7 +192,7 @@ class WikiPage(Handler):
             #logging.info("Wiki page: markup is %s and markup.markup is %s" % (markup, markup.markup))
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
                     editState = "edit", editURL = "/_edit%s" % self.page_id, \
-                    historyURL = self.historyURL, markup = markup.markup)
+                    history = "history", historyURL = self.historyURL, markup = markup.markup)
         else:
             self.redirect("/_edit%s" % self.page_id)
         
@@ -206,7 +206,7 @@ class EditPage(Handler):
         if markupText:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
-                        markup = markupText.markup)
+                        history = "history", markup = markupText.markup)
         else:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, editState = "view", \
                 historyURL = self.historyURL, editURL = "%s" % self.page_id)
@@ -219,7 +219,7 @@ class EditPage(Handler):
         if not markup:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
                          editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
-                         error = "No blank submissions plz!")
+                         history = "history", error = "No blank submissions plz!")
         else:
             #need a urlObj so that entry can specify it as its parent. 
             #this gives us strong consistency in datastore reads, so user will always see what he/she just posted.
@@ -242,7 +242,7 @@ class HistoryPage(Handler):
             logging.info("no history found for this page")
             self.render("history.html", logState = self.logState, logURl = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
-                        error = "No history for this page yet")
+                        history = "history", error = "No history for this page yet")
         else:
             logging.info("history found for this page")
             for version in versions:
@@ -252,7 +252,13 @@ class HistoryPage(Handler):
                     version.markup = version.markup[0:40] + "..."
             self.render("history.html", logState = self.logState, logURl = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
-                        versions = versions)
+                        history = "history", versions = versions)
+
+class Welcome(Handler):
+
+    def get(self):
+        self.startup(self.request)
+        self.render("welcome.html", logState = self.logState, logURl = self.logURL)
 
 class Signup(Handler):
 
@@ -338,7 +344,7 @@ class Flush(Handler):
 
 
 PAGE_RE = r'(?:/([a-zA-Z0-9_-]+/?)*)'
-application = webapp2.WSGIApplication([ (r"/signup/?", Signup), \
+application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/signup/?", Signup), \
                                        (r"/login/?",Login), (r"/logout/?",Logout), \
                                        (r"/flush/?", Flush), ('/_edit' + PAGE_RE, EditPage), \
                                        ('/_history' + PAGE_RE, HistoryPage), (PAGE_RE, WikiPage)], debug=True) 
