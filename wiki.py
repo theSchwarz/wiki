@@ -213,7 +213,7 @@ class EditPage(Handler):
         
 
     def post(self, dont_use_me):
-        #I should factor out all of the common params in some way. e.g. logState and logURL.
+        #I should probably factor out all of the common params in some way. e.g. logState and logURL.
         self.startup(self.request)
         markup = self.request.get('markup')
         if not markup:
@@ -247,7 +247,7 @@ class HistoryPage(Handler):
             logging.info("history found for this page")
             for version in versions:
                 #slightly inefficient bc I'm going to iterate through this list once here, and once again on render. 
-                #probably doesn't matter though.
+                #probably doesn't matter since it's such a tiny list? Should I care about this inefficiency?
                 if len(version.markup) > 30:
                     version.markup = version.markup[0:40] + "..."
             self.render("history.html", logState = self.logState, logURl = self.logURL, \
