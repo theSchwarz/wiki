@@ -1,14 +1,12 @@
 {% extends "base.html" %}
 
 {% block meat %}
-<h1>Edit this wiki</h1>
+<h1>Edit this page</h1>
 <br />
-    <form method = 'post'>
-        <textarea name='markup'>{{markup}}</textarea>
-        <br />
-        <div><input type = "submit" value = "Submit"></div>
-        <div>{{error}}</div>
-        <br />
+    <form method = 'post' role="form">
+            <textarea name='markup' class="form-control editText">{{markup}}</textarea>
+            <input type = "submit" value = "Publish" class="form-control publishButton">
+            <div>{{error}}</div>
     </form>
 
 {% endblock %}

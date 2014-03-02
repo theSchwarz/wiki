@@ -1,0 +1,34 @@
+// customize bootstrap variables here:
+@import "variables";
+@import "bootstrap";
+
+.footer {
+    position:absolute;
+    width:100%;
+    bottom:0;
+    color:#bbb;
+    margin-top:20px;
+}
+
+.footer p {
+    padding-left:15px;
+}
+
+.userNav {
+    float:right;
+}
+
+.content {
+    padding:0px 15px;
+}
+
+.editText {
+    min-height:400px;
+}
+
+.publishButton {
+    width:100px;
+    color:white;
+    background-color:blue;
+    margin-top:10px;
+}

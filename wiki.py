@@ -21,7 +21,6 @@ from random import randint
 from google.appengine.api import users
 from google.appengine.ext import ndb
 from google.appengine.ext import db
-#from google.appengine.ext.db import metadata
 import jinja2
 import saltyPassword
 
@@ -97,7 +96,7 @@ class Handler(webapp2.RequestHandler):
 
     #------------- DB and Cache Handlers. Should probably put this in own module ------------------------
 
-    def cache_and_db_write(self, dbRecord, cacheDict): 
+    def cache_and_db_write(self, dbRecord, cacheDict = {}): 
         #cacheDict should be mappings of strings like {cacheKey: GqlQuery} representing the different
         #caches you want to update with each write, and the corresponding gql query you want to run 
         #to generate the cache value, which will always be a GqlQuery object.
@@ -111,9 +110,10 @@ class Handler(webapp2.RequestHandler):
             memcache.set(key, db.GqlQuery(cacheDict[key]))
 
     def read_from_cache_or_db(self, cacheKey, dbQuery, firstOrAll): 
-    #Goal here was to have one standard way to read from the cache/db. Not sure if this is a good idea or not.
-    #firstOrAll string specifies whether you want first result from a DB query, or the full list of results.
-    #Should be "first" or "all".
+        #Goal here was to have one standard way to read from the cache/db to ensure I always cache appropriately. 
+        #Not sure if this is a good idea or not. Would love fdbk.
+        #firstOrAll string specifies whether you want first result from a DB query, or the full list of results.
+        #Should be "first" or "all".
 
         memcacheVal = self.check_memcache(cacheKey, firstOrAll)
         if not memcacheVal:
@@ -150,7 +150,8 @@ class Handler(webapp2.RequestHandler):
             return
 
     def define_common_queries(self):
-       #Should probably define these in a module. e.g. queries.pageQuery
+       #Should probably define these in a module. e.g. queries.pageQuery. Didn't know how to do that though because
+       #they require arguments that are defined in the handlers (e.g. self.page_id)
        self.pageQuery = "Select * from Entry where url = '%s' and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, self.page_id)
        self.urlQuery = "select * from URL where url = '%s'" % self.page_id
 
@@ -179,7 +180,10 @@ class UserDB(db.Model):
 #-------Actual Page Classes---------#
 
 class WikiPage(Handler):
-    def get(self, dont_use_me):
+    def get(self, dont_use_me): 
+    #dont_use_me is there because I couldn't figure out how to not pass the URL as a param.
+    #issue is that when you use a regex in url defs for app engine, it passes URL along. I tried the syntax
+    #to not include it but got stuck. 
         self.startup(self.request)
         markup = self.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
         if markup:
@@ -233,12 +237,17 @@ class HistoryPage(Handler):
         versions = self.read_from_cache_or_db("history_%s" % self.page_id, self.pageQuery, "all") 
         logging.info("versions is %s" % versions)
         if not versions:
-            logging.info("if not versions is being triggered")
+            logging.info("no history found for this page")
             self.render("history.html", logState = self.logState, logURl = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
                         error = "No history for this page yet")
         else:
-            logging.info("versions else statement")
+            logging.info("history found for this page")
+            for version in versions:
+                #slightly inefficient bc I'm going to iterate through this list once here, and once again on render. 
+                #probably doesn't matter though.
+                if len(version.markup) > 30:
+                    version.markup = version.markup[0:40] + "..."
             self.render("history.html", logState = self.logState, logURl = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
                         versions = versions)
@@ -296,8 +305,8 @@ class Login(Handler):
         if not username or not password:
             error = "invalid username/password combination - 0"
             #should do this escaping in template. 
-            self.render_main(cgi.escape(username), cgi.escape(password), cgi.escape(error)
-            return
+            self.render_main(cgi.escape(username), cgi.escape(password), cgi.escape(error))
+            return 
 
         user_entity = UserDB.get_by_key_name(username)
         if user_entity and saltyPassword.is_valid_password(password,user_entity):
