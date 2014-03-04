@@ -25,6 +25,27 @@ indexes:
 - kind: Entry
   ancestor: yes
   properties:
+  - name: Count
+
+- kind: Entry
+  ancestor: yes
+  properties:
+  - name: ID
+  - name: url
+  - name: created
+    direction: desc
+
+- kind: Entry
+  ancestor: yes
+  properties:
+  - name: key
+  - name: url
+  - name: created
+    direction: desc
+
+- kind: Entry
+  ancestor: yes
+  properties:
   - name: url
   - name: created
     direction: desc

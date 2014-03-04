@@ -1,4 +1,5 @@
 #TO DOs:
+#See Test file. That's where I've figured out how to pull version num from db. Now just need to integrate that into Wiki.
 #0) Fix login submit bug where I don't redirect. May relate to #1.
 #1) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
 #2) Move db stuff into separate model.
@@ -75,12 +76,14 @@ class Handler(webapp2.RequestHandler):
             page_id = page_id[9:]
         return page_id
 
-    def get_query_param(self, getRequestObj, key, defaultStr):
+    def get_query_param(self, getRequestObj, key, defaultStr = ""):
         if key in getRequestObj.params:
             logging.info("%s is %s" % (key,getRequestObj.params[key]))
             val = getRequestObj.params[key]
-        else:
+        elif defaultStr:
             val = defaultStr
+        else:
+            val = None
         return val
 
     def log_user_in(self,userObj):
@@ -168,6 +171,7 @@ class Entry (db.Model):
     created = db.DateTimeProperty(auto_now_add = True)
     url = db.StringProperty(required = True)
     createdBy = db.StringProperty(required = True)
+    versionNum = db.IntegerProperty(required = False)
 
 class URL(db.Model):
     url = db.StringProperty(required = True)
@@ -187,7 +191,8 @@ class WikiPage(Handler):
     #issue is that when you use a regex in url defs for app engine, it passes URL along. I tried the syntax
     #to not include it but got stuck. 
         self.startup(self.request)
-        markup = self.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
+        query, cacheKey = self.which_version()
+        markup = self.read_from_cache_or_db(cacheKey, query, "first")
         if markup:
             #logging.info("Wiki page: markup is %s and markup.markup is %s" % (markup, markup.markup))
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
@@ -195,7 +200,48 @@ class WikiPage(Handler):
                     history = "history", historyURL = self.historyURL, markup = markup.markup)
         else:
             self.redirect("/_edit%s" % self.page_id)
-        
+
+    def which_version(self):
+        entryKey = self.get_query_param(self.request, "entryID")
+        if entryKey:
+            logging.info("Entry ID param passed.")
+            #query = "Select * from Entry where url = '%s' and __key__ = KEY('Entry',%s) and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, entryKey, self.page_id) #
+            query = "Select * from Entry where ANCESTOR is Key('URL', '%s') and __key__ = KEY('Entry',%s)" % (self.page_id, entryKey)
+            cacheKey = "_v%s/%s" % (self.page_id, entryKey)
+        else:
+            logging.info("No entry ID param was passed.")
+            query = self.pageQuery
+            cacheKey = self.page_id
+        logging.info("Wiki Query is %s" % query)
+        return query, cacheKey
+
+class Test(Handler):
+    def get(self):
+        self.startup(self.request)
+        """entryID = 6500037865504768
+        entryKey = "ahRkZXZ-am9zaHJzY2h3YXJ6YXBlbHIoCxIDVVJMIg0vd2lraUV4YW1wbGUxDAsSBUVudHJ5GICAgICA-MULDA"
+        logging.info('entryID is %s' % entryID)
+
+        parent = URL.get_by_key_name("/wikiExample1")
+        logging.info('parent is %s' % parent)
+        logging.info('Entry record is %s' % Entry.get_by_id(6500037865504768, parent=parent))
+
+        #markup = Entry.get_by_id(entryID, parent=parent).markup
+        #dbq = "Select * from Entry where ANCESTOR is Key('URL', '%s') and __key__ = KEY('Entry',%s)" % ("/wikiExample1", entryID)
+        #dbq = "Select * from Entry where ANCESTOR is Key('URL', '%s')" % "/wikiExample1"
+        #dbq = "Select * from Entry where __key__ = KEY('Entry',%s) and ANCESTOR is Key('URL', '%s')" % (entryID, "/wikiExample1")
+        dbq = "Select * from Entry where __key__ = KEY('Entry',%s)" % entryKey
+        data = db.GqlQuery(dbq)
+        logging.info('data is %s' % data)
+        logging.info('data.get() is %s' % data.get())
+        #logging.info('markup is %s' % data.get().markup)"""
+
+        version = db.GqlQuery("Select * from Entry where versionNum = 10 and Ancestor is Key('URL', '%s')" % "/wikiExample1")
+        logging.info('version is %s' % version)
+        logging.info('version.get() is %s' % version.get())
+        logging.info('versionCount is %s' % version.get().markup)
+        self.response.out.write("Done")
+
 
 class EditPage(Handler):
     def get(self, dont_use_me):
@@ -213,7 +259,7 @@ class EditPage(Handler):
         
 
     def post(self, dont_use_me):
-        #I should probably factor out all of the common params in some way. e.g. logState and logURL.
+
         self.startup(self.request)
         markup = self.request.get('markup')
         if not markup:
@@ -227,7 +273,11 @@ class EditPage(Handler):
             if not urlObj:
                 urlObj = URL(url = self.page_id, key_name = self.page_id)
                 self.cache_and_db_write(urlObj, {'url_%s' % self.page_id:self.urlQuery})
-            dbObj = Entry(parent = urlObj.key(), markup = markup, url = self.page_id, createdBy = self.username)
+
+            versionCount = db.GqlQuery("Select * from Entry where Ancestor \
+                                        is Key('URL', '%s')" % self.page_id).count() + 1 #need to hit db directly for this. 
+           
+            dbObj = Entry(parent = urlObj.key(), markup = markup, url = self.page_id, createdBy = self.username, versionNum = versionCount)
             cacheDict = {self.page_id:self.pageQuery, "history_%s" % self.page_id:self.pageQuery}
             self.cache_and_db_write(dbObj,cacheDict) 
             self.redirect("%s" % self.page_id)
@@ -347,7 +397,7 @@ class Flush(Handler):
 
 
 PAGE_RE = r'(?:/([a-zA-Z0-9_-]+/?)*)'
-application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/signup/?", Signup), \
+application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/test/?", Test), (r"/signup/?", Signup), \
                                        (r"/login/?",Login), (r"/logout/?",Logout), \
                                        (r"/flush/?", Flush), ('/_edit' + PAGE_RE, EditPage), \
                                        ('/_history' + PAGE_RE, HistoryPage), (PAGE_RE, WikiPage)], debug=True) 
