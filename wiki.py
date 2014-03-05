@@ -1,9 +1,11 @@
-#TO DOs:
-#1) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
-#2) Move db stuff into separate module.
-#3) Clean up the Signup function so that writes are correct. Right now I don't even check if that user exists (Did that a while ago)
-#4) Move signup stuff out of here.
-#6) Integrate some js just for kicks.
+# TO DOs:
+# Review history solution on udacity.
+# Clean up the Signup function so that writes are correct. Right now I don't even check if that user exists (Did that a while ago).
+# Clean up cookie module so that naming is intuitive. Better break apart methods.
+# (Maybe?) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
+# Move db stuff into separate module.
+# Move signup stuff into a separate module?.
+# Integrate some js just for kicks.
 
 import webapp2
 import sys 
