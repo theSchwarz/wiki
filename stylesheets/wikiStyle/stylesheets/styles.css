@@ -7658,15 +7658,16 @@ button.close {
   font-size: 32px;
   font-weight: bold;
   margin-top: 0px;
+  margin-bottom: 20px;
 }
 
-/* line 61, ../sass/styles.scss */
+/* line 62, ../sass/styles.scss */
 .form-label {
   margin-top: 10px;
   margin-bottom: 2px;
 }
 
-/* line 66, ../sass/styles.scss */
+/* line 67, ../sass/styles.scss */
 .form-bottom-link {
   margin-top: 10px;
 }
