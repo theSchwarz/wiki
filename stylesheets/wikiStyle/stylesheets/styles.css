@@ -7630,3 +7630,9 @@ button.close {
   background-color: blue;
   margin-top: 10px;
 }
+
+/* line 36, ../sass/styles.scss */
+.historyMessage {
+  color: #bbb;
+  font-style: italic;
+}
