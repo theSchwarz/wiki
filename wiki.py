@@ -1,11 +1,8 @@
 #TO DOs:
-#See Test file. That's where I've figured out how to pull version num from db. Now just need to integrate that into Wiki.
-#0) Fix login submit bug where I don't redirect. May relate to #1.
 #1) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
-#2) Move db stuff into separate model.
+#2) Move db stuff into separate module.
 #3) Clean up the Signup function so that writes are correct. Right now I don't even check if that user exists (Did that a while ago)
 #4) Move signup stuff out of here.
-#5) Integrate css.
 #6) Integrate some js just for kicks.
 
 import webapp2
@@ -52,6 +49,7 @@ class Handler(webapp2.RequestHandler):
             return False
         else:
             self.logURL = "/logout?refURL=%s" % self.request.path[1:]
+            logging.info("self.logURL is %s" % self.logURL)
             self.username = cookies.get_usable_cookie_value(self.request, "username", "")
             self.logState = "(%s) logout" % self.username
             logging.info("User is logged in. self.username is %s" % self.username)
@@ -77,7 +75,7 @@ class Handler(webapp2.RequestHandler):
         return page_id
 
     def get_query_param(self, getRequestObj, key, defaultStr = ""):
-        if key in getRequestObj.params:
+        if key in getRequestObj.params and getRequestObj.params[key]:
             logging.info("%s is %s" % (key,getRequestObj.params[key]))
             val = getRequestObj.params[key]
         elif defaultStr:
@@ -265,7 +263,7 @@ class HistoryPage(Handler):
         logging.info("versions is %s" % versions)
         if not versions:
             logging.info("no history found for this page")
-            self.render("history.html", logState = self.logState, logURl = self.logURL, \
+            self.render("history.html", logState = self.logState, logURL = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
                         history = "history", error = "No history for this page yet")
         else:
@@ -275,7 +273,7 @@ class HistoryPage(Handler):
                 #probably doesn't matter since it's such a tiny list? Should I care about this inefficiency?
                 if len(version.markup) > 30:
                     version.markup = version.markup[0:40] + "..."
-            self.render("history.html", logState = self.logState, logURl = self.logURL, \
+            self.render("history.html", logState = self.logState, logURL = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
                         history = "history", versions = versions, pageURL = "%s" % self.page_id)
 
@@ -283,7 +281,7 @@ class Welcome(Handler):
 
     def get(self):
         self.startup(self.request)
-        self.render("welcome.html", logState = self.logState, logURl = self.logURL)
+        self.render("welcome.html", logState = self.logState, logURL = self.logURL)
 
 class Signup(Handler):
 

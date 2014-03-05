@@ -7624,7 +7624,7 @@ button.close {
 }
 
 /* line 29, ../sass/styles.scss */
-.publishButton {
+.Button {
   width: 100px;
   color: white;
   background-color: blue;
@@ -7632,7 +7632,41 @@ button.close {
 }
 
 /* line 36, ../sass/styles.scss */
+.bold {
+  font-weight: bold;
+}
+
+/* line 40, ../sass/styles.scss */
 .historyMessage {
   color: #bbb;
   font-style: italic;
+}
+
+/* line 45, ../sass/styles.scss */
+.centerForm {
+  width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 50px;
+  border: solid 1px #bbb;
+  border-radius: 5px;
+  padding: 20px;
+}
+
+/* line 55, ../sass/styles.scss */
+.formHeader {
+  font-size: 32px;
+  font-weight: bold;
+  margin-top: 0px;
+}
+
+/* line 61, ../sass/styles.scss */
+.form-label {
+  margin-top: 10px;
+  margin-bottom: 2px;
+}
+
+/* line 66, ../sass/styles.scss */
+.form-bottom-link {
+  margin-top: 10px;
 }
