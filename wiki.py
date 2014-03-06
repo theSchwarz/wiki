@@ -313,17 +313,72 @@ class Signup(Handler):
 
         #should do all of this escaping in a template later using autoescape true/false
         if password != verify:
-            self.render_main(cgi.escape(email),cgi.escape(username),cgi.escape(password),cgi.escape(verify),"Make sure your passwords match!")
+            self.render_main(email,username,password,verify,"Make sure your passwords match!")
         elif not password or not verify or not username:
-            self.render_main(cgi.escape(email),cgi.escape(username),cgi.escape(password),cgi.escape(verify),"Please fill in every field.")
+            self.render_main(email,username,password,verify,"Please fill in every field.")
         elif UserDB.get_by_key_name(username):
-            self.render_main(cgi.escape(email),cgi.escape(username),cgi.escape(password),cgi.escape(verify),"That username exists.")
+            self.render_main(email,username,password,verify,"That username exists.")
         else:
             password = saltyPassword.generate_salted_password(password)
             newUser = UserDB(email = email, username = username, password = password, key_name = username)
             newUser.put()
             self.log_user_in(newUser)
             self.redirect(refURL)
+
+class Signup2(Handler):
+
+    #to dos: finish post function so that it...
+    #   - Do database write in a transaction, rather than checking for username existance in one call, and then writing in a second call
+    #        This is bad because state of DB could theoretically change between time of those calls.
+    #   - validates that the html inputs are correct (email syntax)
+    #   - In a perfect world, we'd wait for a response back from the db saying that the write was successful before setting the cookie.
+
+    def render_main(self, email="s", username="s", password="s",verify="s", error=""):
+        kwargs = {"email":email, "username":username, "password":password, "verify":verify, "error":error, \
+                  "logState":self.logState, "logURl": self.logURL}
+        self.render("signup.html",**kwargs)
+
+    def get(self):
+        self.startup(self.request)
+        self.render_main()
+
+    def post(self):
+        self.startup(self.request)
+        email = self.request.get("email")
+        username = self.request.get("username")
+        password = self.request.get("password")
+        verify = self.request.get("verify")
+
+        refURL = str(self.get_query_param(self.request, 'refURL', '/'))
+
+        if password != verify:
+            self.render_main(email,username,password,verify,"Make sure your passwords match!")
+            return
+        elif not password or not verify or not username:
+            logging.info("Missing a field")
+            self.render_main(email,username,password,verify,"Please fill in every field.")
+            return
+
+        newUser = self.create_user(email,username,password)
+        if not newUser:
+            self.render_main(email,username,password,verify,"That username exists.")
+            return
+        else:
+            self.log_user_in(newUser)
+            self.redirect(refURL)
+
+    @db.transactional
+    def create_user(self,email,username,password):
+        if UserDB.get_by_key_name(username):
+            return False
+        else:
+            password = saltyPassword.generate_salted_password(password)
+            newUser = UserDB(email = email, username = username, password = password, key_name = username)
+            newUser.put()
+            return newUser
+
+
+
 
 class Login(Handler):
 
@@ -340,8 +395,7 @@ class Login(Handler):
 
         if not username or not password:
             error = "invalid username/password combination - 0"
-            #should do this escaping in template. 
-            self.render_main(cgi.escape(username), cgi.escape(password), cgi.escape(error))
+            self.render_main(username, password, error)
             return 
 
         user_entity = UserDB.get_by_key_name(username)
@@ -382,7 +436,7 @@ class Test(Handler):
         self.response.out.write("Done")
 
 PAGE_RE = r'(?:/([a-zA-Z0-9_-]+/?)*)'
-application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/signup/?", Signup), \
+application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/signup/?", Signup2), \
                                        (r"/login/?",Login), (r"/logout/?",Logout), \
                                        (r"/flush/?", Flush), ('/_edit' + PAGE_RE, EditPage), \
                                        ('/_history' + PAGE_RE, HistoryPage), (PAGE_RE, WikiPage)], debug=True) 

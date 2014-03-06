@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 
 {% block meat %}
-
+{% autoescape true %}
 <div class='centerForm'>
     <h1 class="formHeader">Signup</h1>
     
     <form method = 'post'>
         <p class="bold form-label">email</p>
-        <input type = "text" name = "email" value = {{email}} class="form-control">
+        <input type = "text" name = "email" value = "{{email}}" class="form-control">
         <p class="bold form-label">username</p>
-        <input type = "text" name = "username" value = {{username}} class="form-control">
+        <input type = "text" name = "username" value = "{{username}}" class="form-control">
         <p class="bold form-label">password</p>
-        <input type = "text" name = "password" value = {{password}} class="form-control">
+        <input type = "text" name = "password" value = "{{password}}" class="form-control">
         <p class="bold form-label">verify</p>
-        <input type = "text" name = "verify" value = {{verify}} class="form-control">
+        <input type = "text" name = "verify" value = "{{verify}}" class="form-control">
         <div><input type = "submit" value = "Done" class="form-control Button"></div>
-        <p class="form-bottom-link"><a href="/signin">Sign in instead</a></p>
+        <p class="form-bottom-link"><a href="/signin">Log in instead</a></p>
         <div>{{error}}</div>
     </form>
 </div>
-
+{% endautoescape %}
 {% endblock %}
