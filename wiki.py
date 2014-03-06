@@ -1,6 +1,10 @@
+# (TECHNICAL) DESIGN GOALS
+# 1. Write clean, modular code.
+# 2. (Almost) Never hit the DB for reads.
+# 3. Implement cookies, user accounts, and password hashing myself for learning purposes.
+
 # TO DOs:
 # Review history solution on udacity.
-# Clean up the Signup function so that writes are correct. Right now I don't even check if that user exists (Did that a while ago).
 # Clean up cookie module so that naming is intuitive. Better break apart methods.
 # (Maybe?) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
 # Move db stuff into separate module.
@@ -26,7 +30,6 @@ import saltyPassword
 
 template_dir = os.path.join(os.path.dirname(__file__), "templates")
 jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(template_dir), autoescape = False, extensions=['jinja2.ext.autoescape']) 
-
 #autoescape set to False since this is a wiki. does NOT do anything to help server side escaping.
 
 #generic handler class for anytime you want to write a web page. can be used for both get and post.
@@ -95,8 +98,11 @@ class Handler(webapp2.RequestHandler):
     def log_user_out(self):
         cookies.delete_cookie(self.request, self.response, "username","/")
 
-    def get(self):
-        self.response.out.write("no GET method defined!")
+    def define_common_queries(self):
+       #Should probably define these in a module. e.g. queries.pageQuery. Didn't know how to do that though because
+       #they require arguments that are defined in the handlers (e.g. self.page_id)
+       self.pageQuery = "Select * from Entry where url = '%s' and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, self.page_id)
+       self.urlQuery = "select * from URL where url = '%s'" % self.page_id
 
 
     #------------- DB and Cache Handlers. Should probably put this in own module ------------------------
@@ -115,10 +121,10 @@ class Handler(webapp2.RequestHandler):
             memcache.set(key, db.GqlQuery(cacheDict[key]))
 
     def read_from_cache_or_db(self, cacheKey, dbQuery, firstOrAll): 
-        #Goal here was to have one standard way to read from the cache/db to ensure I always cache appropriately. 
+        #Goal here was to have one way to read from the cache/db to ensure I always cache appropriately. 
         #Not sure if this is a good idea or not. Would love fdbk.
         #firstOrAll string specifies whether you want first result from a DB query, or the full list of results.
-        #Should be "first" or "all".
+        #Should be "first" or "all". 
 
         memcacheVal = self.check_memcache(cacheKey, firstOrAll)
         if not memcacheVal:
@@ -154,11 +160,7 @@ class Handler(webapp2.RequestHandler):
             logging.info('did not find %s in memcache' % cacheKey)
             return
 
-    def define_common_queries(self):
-       #Should probably define these in a module. e.g. queries.pageQuery. Didn't know how to do that though because
-       #they require arguments that are defined in the handlers (e.g. self.page_id)
-       self.pageQuery = "Select * from Entry where url = '%s' and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, self.page_id)
-       self.urlQuery = "select * from URL where url = '%s'" % self.page_id
+
 
 # -----DB Classes. Probs should be in own module. ---------- #
 
@@ -187,14 +189,12 @@ class UserDB(db.Model):
 
 class WikiPage(Handler):
     def get(self, dont_use_me): 
-    #dont_use_me is there because I couldn't figure out how to not pass the URL as a param.
-    #issue is that when you use a regex in url defs for app engine, it passes URL along. I tried the syntax
-    #to not include it but got stuck. 
+    #dont_use_me is there because I couldn't figure out how to not pass the URL as a param (GAE automatically does this 
+    #when you use a regex in the URL mapping. Tried the syntax to not include it but got stuck. 
         self.startup(self.request)
         query, cacheKey, historyMessage = self.which_version()
         markup = self.read_from_cache_or_db(cacheKey, query, "first")
         if markup:
-            #logging.info("Wiki page: markup is %s and markup.markup is %s" % (markup, markup.markup))
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
                     editState = "edit", editURL = "/_edit%s" % self.page_id, \
                     history = "history", historyURL = self.historyURL, markup = markup.markup, \
@@ -206,7 +206,6 @@ class WikiPage(Handler):
         version = self.get_query_param(self.request, "v")
         if version:
             logging.info("version param passed.")
-            #query = "Select * from Entry where url = '%s' and __key__ = KEY('Entry',%s) and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, entryKey, self.page_id) #
             query = "Select * from Entry where versionNum = %s and Ancestor is Key('URL', '%s')" % (version,self.page_id)
             cacheKey = "_v%s/%s" % (self.page_id, version)
             historyMessage = "Showing revision %s of this page." % version
@@ -311,46 +310,6 @@ class Signup(Handler):
 
         refURL = str(self.get_query_param(self.request, 'refURL', '/'))
 
-        #should do all of this escaping in a template later using autoescape true/false
-        if password != verify:
-            self.render_main(email,username,password,verify,"Make sure your passwords match!")
-        elif not password or not verify or not username:
-            self.render_main(email,username,password,verify,"Please fill in every field.")
-        elif UserDB.get_by_key_name(username):
-            self.render_main(email,username,password,verify,"That username exists.")
-        else:
-            password = saltyPassword.generate_salted_password(password)
-            newUser = UserDB(email = email, username = username, password = password, key_name = username)
-            newUser.put()
-            self.log_user_in(newUser)
-            self.redirect(refURL)
-
-class Signup2(Handler):
-
-    #to dos: finish post function so that it...
-    #   - Do database write in a transaction, rather than checking for username existance in one call, and then writing in a second call
-    #        This is bad because state of DB could theoretically change between time of those calls.
-    #   - validates that the html inputs are correct (email syntax)
-    #   - In a perfect world, we'd wait for a response back from the db saying that the write was successful before setting the cookie.
-
-    def render_main(self, email="s", username="s", password="s",verify="s", error=""):
-        kwargs = {"email":email, "username":username, "password":password, "verify":verify, "error":error, \
-                  "logState":self.logState, "logURl": self.logURL}
-        self.render("signup.html",**kwargs)
-
-    def get(self):
-        self.startup(self.request)
-        self.render_main()
-
-    def post(self):
-        self.startup(self.request)
-        email = self.request.get("email")
-        username = self.request.get("username")
-        password = self.request.get("password")
-        verify = self.request.get("verify")
-
-        refURL = str(self.get_query_param(self.request, 'refURL', '/'))
-
         if password != verify:
             self.render_main(email,username,password,verify,"Make sure your passwords match!")
             return
@@ -377,9 +336,6 @@ class Signup2(Handler):
             newUser.put()
             return newUser
 
-
-
-
 class Login(Handler):
 
     def render_main(self,username="s", password="s", error=""):
@@ -394,11 +350,14 @@ class Login(Handler):
         password = self.request.get("password")
 
         if not username or not password:
-            error = "invalid username/password combination - 0"
+            error = "invalid username/password combination"
             self.render_main(username, password, error)
             return 
 
-        user_entity = UserDB.get_by_key_name(username)
+        userQuery = "select * from UserDB where username = '%s'" % username
+        user_entity = self.read_from_cache_or_db(username,userQuery,"first")
+        #any reason not to cache user objects? Couldn't think of one, but curious.
+
         if user_entity and saltyPassword.is_valid_password(password,user_entity):
             logging.info('valid username and password found')
             self.log_user_in(user_entity)
@@ -407,7 +366,7 @@ class Login(Handler):
             self.redirect(refURL)   
 
         else:
-            error = "invalid username/password combination - 1"
+            error = "invalid username/password combination"
             self.render_main(username,password,error)
 
 class Logout(Handler):
@@ -418,7 +377,6 @@ class Logout(Handler):
         self.redirect(refURL)
 
 class Flush(Handler):
-
     def get(self):
         self.startup()
         memcache.flush_all()
@@ -427,16 +385,10 @@ class Flush(Handler):
 class Test(Handler):
     #I use this for testing out read/write stuff. Just need to add (r"/test/?", Test) to url mapping
     def get(self):
-        self.startup(self.request)
-
-        version = db.GqlQuery("Select * from Entry where versionNum = 10 and Ancestor is Key('URL', '%s')" % "/wikiExample1")
-        logging.info('version is %s' % version)
-        logging.info('version.get() is %s' % version.get())
-        logging.info('versionCount is %s' % version.get().markup)
-        self.response.out.write("Done")
+        pass
 
 PAGE_RE = r'(?:/([a-zA-Z0-9_-]+/?)*)'
-application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/signup/?", Signup2), \
+application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/signup/?", Signup), \
                                        (r"/login/?",Login), (r"/logout/?",Logout), \
                                        (r"/flush/?", Flush), ('/_edit' + PAGE_RE, EditPage), \
                                        ('/_history' + PAGE_RE, HistoryPage), (PAGE_RE, WikiPage)], debug=True) 
