@@ -7,7 +7,7 @@
 
 {% autoescape true %}
 {% for version in versions %}
-<p>{{version.created}} {{version.markup}} <a href="{{pageURL}}?={{version.versionNum}}">view</a>
+<p>{{version.created}} {{version.markup}} <a href="{{pageURL}}?v={{version.versionNum}}">view</a>
 {% endfor %}
 {% endautoescape %}
 

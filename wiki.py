@@ -4,6 +4,7 @@
 # 3. Implement cookies, user accounts, and password hashing myself for learning purposes.
 
 # TO DOs:
+# Protect against GQL injection in all of my queries with user input. Haven't done that yet :(.
 # Review history solution on udacity.
 # Clean up cookie module so that naming is intuitive. Better break apart methods.
 # (Maybe?) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
