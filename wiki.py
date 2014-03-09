@@ -6,8 +6,6 @@
 # TO DOs:
 # Clean up cookie module so that naming is intuitive. Better break apart methods.
 # (Maybe?) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
-# Move db stuff into separate module.
-# Move signup stuff into a separate module?.
 # Integrate some js just for kicks.
 
 import webapp2
