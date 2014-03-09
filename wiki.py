@@ -4,8 +4,6 @@
 # 3. Implement cookies, user accounts, and password hashing myself for learning purposes.
 
 # TO DOs:
-# Protect against GQL injection in all of my queries with user input. Haven't done that yet :(.
-# Review history solution on udacity.
 # Clean up cookie module so that naming is intuitive. Better break apart methods.
 # (Maybe?) Keep state of referrer in generic handler using refferer header rather than refURL query param I have everywhere.
 # Move db stuff into separate module.
@@ -28,6 +26,7 @@ from google.appengine.ext import ndb
 from google.appengine.ext import db
 import jinja2
 import saltyPassword
+import data
 
 template_dir = os.path.join(os.path.dirname(__file__), "templates")
 jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(template_dir), autoescape = False, extensions=['jinja2.ext.autoescape']) 
@@ -102,91 +101,15 @@ class Handler(webapp2.RequestHandler):
     def define_common_queries(self):
        #Should probably define these in a module. e.g. queries.pageQuery. Didn't know how to do that though because
        #they require arguments that are defined in the handlers (e.g. self.page_id)
+       #Is formatting like the below bad habit? Clearly vulnerable to sql injection in the format below, but I'm pretty sure
+       #GQL is read only, and only allows one read per function call, and thus doesn't really pose a problem.
        self.pageQuery = "Select * from Entry where url = '%s' and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, self.page_id)
        self.urlQuery = "select * from URL where url = '%s'" % self.page_id
 
 
-    #------------- DB and Cache Handlers. Should probably put this in own module ------------------------
-
-    def cache_and_db_write(self, dbRecord, cacheDict = {}): 
-        #cacheDict should be mappings of strings like {cacheKey: GqlQuery} representing the different
-        #caches you want to update with each write, and the corresponding gql query you want to run 
-        #to generate the cache value, which will always be a GqlQuery object.
-        logging.info("writing to the database")
-        try:
-            foo = dbRecord.put()
-        except:
-            print "DB write not done yet!"
-        for key in cacheDict:
-            logging.info("setting memcache with %s, %s" % (key, cacheDict[key]))
-            memcache.set(key, db.GqlQuery(cacheDict[key]))
-
-    def read_from_cache_or_db(self, cacheKey, dbQuery, firstOrAll): 
-        #Goal here was to have one way to read from the cache/db to ensure I always cache appropriately. 
-        #Not sure if this is a good idea or not. Would love fdbk.
-        #firstOrAll string specifies whether you want first result from a DB query, or the full list of results.
-        #Should be "first" or "all". 
-
-        memcacheVal = self.check_memcache(cacheKey, firstOrAll)
-        if not memcacheVal:
-            return self.check_db(cacheKey, dbQuery, firstOrAll)
-        else:
-            return memcacheVal
-
-    def check_db(self, cacheKey, dbQuery, firstOrAll):
-        logging.info('%s was NOT found in memcache. Checking DB.' % cacheKey)
-        data = db.GqlQuery(dbQuery)
-        if data.count() < 1: #seems like only way to check for empty db query.
-            logging.info('Not in the db.')
-            return False
-        else:
-            logging.info('%s is result from DB.' % data)
-            if firstOrAll == "first":
-                memcache.set(cacheKey,data)
-                return data.get()
-            elif firstOrAll == "all":
-                memcache.set(cacheKey,data) #pickle cannot make sense of GAE iterable for memcache storage. Need to convert to a list.
-                return data.run()
-
-    def check_memcache(self, cacheKey, firstOrAll):
-        logging.info('reading %s from memcache' % cacheKey)
-        val = memcache.get(cacheKey)
-        if val:
-            logging.info('found %s in memcache. It is %s' % (cacheKey, val))
-            if firstOrAll == "first":
-                return val.get()
-            elif firstOrAll == "all":
-                return list(val.run())
-        else:
-            logging.info('did not find %s in memcache' % cacheKey)
-            return
 
 
-
-# -----DB Classes. Probs should be in own module. ---------- #
-
-class Entry (db.Model):
-    #When creating an Entry, always specify the corresponding URL as the parent.
-    #This maintains consistency between writes to Entries and reads from Entries.
-    #This became important when I'd post an entry, get redirected to the main wiki page, and see old results.
-
-    markup = db.TextProperty(required = True)
-    created = db.DateTimeProperty(auto_now_add = True)
-    url = db.StringProperty(required = True)
-    createdBy = db.StringProperty(required = True)
-    versionNum = db.IntegerProperty(required = False)
-
-class URL(db.Model):
-    url = db.StringProperty(required = True)
-
-class UserDB(db.Model):
-    #username is the unique key. When creating a new user, specify 'key_name = username'
-    #e.g. foo = Entry(username=usernameStr, pw = pwStr, key_name = usernameStr)
-    username = db.StringProperty(required = True)
-    password = db.StringProperty(required = True)
-    email = db.StringProperty(required = False)
-
-#-------Actual Page Classes---------#
+#-------Actual Page Handlers---------#
 
 class WikiPage(Handler):
     def get(self, dont_use_me): 
@@ -194,7 +117,7 @@ class WikiPage(Handler):
     #when you use a regex in the URL mapping. Tried the syntax to not include it but got stuck. 
         self.startup(self.request)
         query, cacheKey, historyMessage = self.which_version()
-        markup = self.read_from_cache_or_db(cacheKey, query, "first")
+        markup = data.read_from_cache_or_db(cacheKey, query, "first")
         if markup:
             self.render("main.html", logState = self.logState, logURL = self.logURL, \
                     editState = "edit", editURL = "/_edit%s" % self.page_id, \
@@ -223,7 +146,7 @@ class EditPage(Handler):
         self.startup(self.request)
         if self.logState == 'login':
             self.redirect('/login/?refURL=/_edit%s' % self.page_id)
-        markupText = self.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
+        markupText = data.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
         if markupText:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
@@ -244,24 +167,24 @@ class EditPage(Handler):
         else:
             #need a urlObj so that entry can specify it as its parent. 
             #this gives us strong consistency in datastore reads, so user will always see what he/she just posted.
-            urlObj = self.read_from_cache_or_db(self.page_id, self.urlQuery, "first")
+            urlObj = data.read_from_cache_or_db(self.page_id, self.urlQuery, "first")
             if not urlObj:
-                urlObj = URL(url = self.page_id, key_name = self.page_id)
-                self.cache_and_db_write(urlObj, {'url_%s' % self.page_id:self.urlQuery})
+                urlObj = data.URL(url = self.page_id, key_name = self.page_id)
+                data.cache_and_db_write(urlObj, {'url_%s' % self.page_id:self.urlQuery})
 
             versionCount = db.GqlQuery("Select * from Entry where Ancestor \
                                         is Key('URL', '%s')" % self.page_id).count() + 1 #need to hit db for this. will be different for each post. 
            
-            dbObj = Entry(parent = urlObj.key(), markup = markup, url = self.page_id, createdBy = self.username, versionNum = versionCount)
+            dbObj = data.Entry(parent = urlObj.key(), markup = markup, url = self.page_id, createdBy = self.username, versionNum = versionCount)
             cacheDict = {self.page_id:self.pageQuery, "history_%s" % self.page_id:self.pageQuery}
-            self.cache_and_db_write(dbObj,cacheDict) 
+            data.cache_and_db_write(dbObj,cacheDict) 
             self.redirect("%s" % self.page_id)
 
 class HistoryPage(Handler):
 
     def get(self, dont_use_me):
         self.startup(self.request)
-        versions = self.read_from_cache_or_db("history_%s" % self.page_id, self.pageQuery, "all") 
+        versions = data.read_from_cache_or_db("history_%s" % self.page_id, self.pageQuery, "all") 
         logging.info("versions is %s" % versions)
         if not versions:
             logging.info("no history found for this page")
@@ -293,7 +216,7 @@ class Signup(Handler):
     #   - validates that the html inputs are correct (email syntax)
     #   - In a perfect world, we'd wait for a response back from the db saying that the write was successful before setting the cookie.
 
-    def render_main(self, email="s", username="s", password="s",verify="s", error=""):
+    def render_main(self, email="", username="", password="",verify="", error=""):
         kwargs = {"email":email, "username":username, "password":password, "verify":verify, "error":error, \
                   "logState":self.logState, "logURl": self.logURL}
         self.render("signup.html",**kwargs)
@@ -329,17 +252,17 @@ class Signup(Handler):
 
     @db.transactional
     def create_user(self,email,username,password):
-        if UserDB.get_by_key_name(username):
+        if data.UserDB.get_by_key_name(username):
             return False
         else:
             password = saltyPassword.generate_salted_password(password)
-            newUser = UserDB(email = email, username = username, password = password, key_name = username)
+            newUser = data.UserDB(email = email, username = username, password = password, key_name = username)
             newUser.put()
             return newUser
 
 class Login(Handler):
 
-    def render_main(self,username="s", password="s", error=""):
+    def render_main(self,username="", password="", error=""):
         kwargs = {"username":username,"password":password, "error":error}
         self.render("login.html", **kwargs)
 
@@ -356,7 +279,7 @@ class Login(Handler):
             return 
 
         userQuery = "select * from UserDB where username = '%s'" % username
-        user_entity = self.read_from_cache_or_db(username,userQuery,"first")
+        user_entity = data.read_from_cache_or_db(username,userQuery,"first")
         #any reason not to cache user objects? Couldn't think of one, but curious.
 
         if user_entity and saltyPassword.is_valid_password(password,user_entity):
@@ -377,29 +300,26 @@ class Logout(Handler):
         self.log_user_out()
         self.redirect(refURL)
 
-class Flush(Handler):
-    def get(self):
-        self.startup()
-        memcache.flush_all()
-        self.redirect("/")
-
 class Test(Handler):
     #I use this for testing out read/write stuff. Just need to add (r"/test/?", Test) to url mapping
     def get(self):
-        pass
+        foo = data.testDB(record = "1")
+        foo.put()
+        print data.db.GqlQuery("Select * from testDB").get().record
+        self.response.out.write("Done")
 
 PAGE_RE = r'(?:/([a-zA-Z0-9_-]+/?)*)'
-application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/signup/?", Signup), \
+application = webapp2.WSGIApplication([ (r"/?", Welcome), (r"/signup/?", Signup), (r"/test/?", Test), \
                                        (r"/login/?",Login), (r"/logout/?",Logout), \
-                                       (r"/flush/?", Flush), ('/_edit' + PAGE_RE, EditPage), \
-                                       ('/_history' + PAGE_RE, HistoryPage), (PAGE_RE, WikiPage)], debug=True) 
+                                       ('/_edit' + PAGE_RE, EditPage), ('/_history' + PAGE_RE, HistoryPage), \
+                                       (PAGE_RE, WikiPage)], debug=True) 
                                        
 def handle_404(request, response, exception):
     response.write("can't find that url")
     response.set_status(404)
 
 def handle_500(request, response, exception):
-    response.write("500")
+    response.write("500 error")
     response.set_status(500)
 
 #application.error_handlers[404] = handle_404
