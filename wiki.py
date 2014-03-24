@@ -34,6 +34,23 @@ jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(template_dir), a
 #have all of your page-specific classes inherit from here, call render with a template name and list of **kwargs to fill in the template values.
 class Handler(webapp2.RequestHandler):
 
+    def __init__(self,request,response):
+        self.initialize(request,response)
+        #Used everywhere to define the path of the page & the user.
+        self.page_id = ""
+        self.username = ""
+
+        #Control how nav bar links behave
+        self.logState = ""
+        self.logURL = "" 
+        self.editState = ""
+        self.editURL = "" 
+        self.historyURL = ""
+
+        #Common queries that are used in multiple places.
+        self.pageQuery = ""
+        self.urlQuery = ""
+
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
 
@@ -53,11 +70,12 @@ class Handler(webapp2.RequestHandler):
         else:
             self.logURL = "/logout?refURL=%s" % self.request.path[1:]
             logging.info("self.logURL is %s" % self.logURL)
-            self.username = cookies.get_usable_cookie_value(self.request, "username", "")
+            self.username = cookies.get_usable_cookie_value(self.request,"username","")
             self.logState = "(%s) logout" % self.username
             logging.info("User is logged in. self.username is %s" % self.username)
             return self.username
 
+    #Run this on all pages except /login and /logout
     def startup(self, requestObj):
         self.page_id = self.set_page_id(requestObj)
         logging.info("self.page_id is %s" % self.page_id)
@@ -71,10 +89,9 @@ class Handler(webapp2.RequestHandler):
     def set_page_id(self, requestObj):
         logging.info("path is %s" % requestObj.path)
         page_id = requestObj.path
-        if "/_edit" in page_id:
-            page_id = page_id[6:]
-        if "/_history" in page_id:
-            page_id = page_id[9:]
+        for urlMarker in ('/_edit','/_history'):
+            if page_id.startswith(urlMarker):
+                page_id = page_id[len(urlMarker):]
         return page_id
 
     def get_query_param(self, getRequestObj, key, defaultStr = ""):
@@ -91,7 +108,7 @@ class Handler(webapp2.RequestHandler):
         real_username = userObj.username
         readableUsernameCookie = cookies.get_usable_cookie_value(self.request,real_username,"")
         readableUsernameCookie = real_username
-        cookies.set_secure_cookie(self.response, "username", readableUsernameCookie, "/")
+        cookies.set_secure_cookie(self.response,"username",readableUsernameCookie,"/")
 
     def log_user_out(self):
         cookies.delete_cookie(self.request, self.response, "username","/")
@@ -103,7 +120,6 @@ class Handler(webapp2.RequestHandler):
        #GQL is read only, and only allows one read per function call, and thus doesn't really pose a problem.
        self.pageQuery = "Select * from Entry where url = '%s' and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, self.page_id)
        self.urlQuery = "select * from URL where url = '%s'" % self.page_id
-
 
 
 
