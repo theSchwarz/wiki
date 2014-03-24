@@ -47,10 +47,6 @@ class Handler(webapp2.RequestHandler):
         self.editURL = "" 
         self.historyURL = ""
 
-        #Common queries that are used in multiple places.
-        self.pageQuery = ""
-        self.urlQuery = ""
-
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
 
@@ -77,16 +73,15 @@ class Handler(webapp2.RequestHandler):
 
     #Run this on all pages except /login and /logout
     def startup(self, requestObj):
-        self.page_id = self.set_page_id(requestObj)
+        self.page_id = self.get_page_id(requestObj)
         logging.info("self.page_id is %s" % self.page_id)
         self.set_history_URL()
         self.login_check()
-        self.define_common_queries()
 
     def set_history_URL(self):
         self.historyURL = "/_history%s" % self.page_id
 
-    def set_page_id(self, requestObj):
+    def get_page_id(self, requestObj):
         logging.info("path is %s" % requestObj.path)
         page_id = requestObj.path
         for urlMarker in ('/_edit','/_history'):
@@ -113,20 +108,10 @@ class Handler(webapp2.RequestHandler):
     def log_user_out(self):
         cookies.delete_cookie(self.request, self.response, "username","/")
 
-    def define_common_queries(self):
-       #Should probably define these in a module. e.g. queries.pageQuery. Didn't know how to do that though because
-       #they require arguments that are defined in the handlers (e.g. self.page_id)
-       #Is formatting like the below bad habit? Clearly vulnerable to sql injection in the format below, but I'm pretty sure
-       #GQL is read only, and only allows one read per function call, and thus doesn't really pose a problem.
-       self.pageQuery = "Select * from Entry where url = '%s' and ancestor is Key('URL', '%s') order by created desc" % (self.page_id, self.page_id)
-       self.urlQuery = "select * from URL where url = '%s'" % self.page_id
-
-
-
 #-------Actual Page Handlers---------#
 
 class WikiPage(Handler):
-    def get(self, dont_use_me): 
+    def get(self, _unused): 
     #dont_use_me is there because I couldn't figure out how to not pass the URL as a param (GAE automatically does this 
     #when you use a regex in the URL mapping. Tried the syntax to not include it but got stuck. 
         self.startup(self.request)
@@ -149,18 +134,18 @@ class WikiPage(Handler):
             historyMessage = "Showing revision %s of this page." % version
         else:
             logging.info("No entry ID param was passed.")
-            query = self.pageQuery
+            query = data.get_page_query(self.page_id)
             cacheKey = self.page_id
             historyMessage = ""
         logging.info("Wiki Query is %s" % query)
         return query, cacheKey, historyMessage
 
 class EditPage(Handler):
-    def get(self, dont_use_me):
+    def get(self, _unused):
         self.startup(self.request)
         if self.logState == 'login':
             self.redirect('/login/?refURL=/_edit%s' % self.page_id)
-        markupText = data.read_from_cache_or_db(self.page_id, self.pageQuery, "first")
+        markupText = data.read_from_cache_or_db(self.page_id, data.get_page_query(self.page_id), "first")
         if markupText:
             self.render("edit.html", logState = self.logState, logURL = self.logURL, \
                         editState = "view", editURL = "%s" % self.page_id, historyURL = self.historyURL, \
@@ -170,7 +155,7 @@ class EditPage(Handler):
                 historyURL = self.historyURL, editURL = "%s" % self.page_id)
         
 
-    def post(self, dont_use_me):
+    def post(self, _unused):
 
         self.startup(self.request)
         markup = self.request.get('markup')
@@ -181,24 +166,24 @@ class EditPage(Handler):
         else:
             #need a urlObj so that entry can specify it as its parent. 
             #this gives us strong consistency in datastore reads, so user will always see what he/she just posted.
-            urlObj = data.read_from_cache_or_db(self.page_id, self.urlQuery, "first")
+            urlObj = data.read_from_cache_or_db(self.page_id, data.get_url_query(self.page_id), "first")
             if not urlObj:
                 urlObj = data.URL(url = self.page_id, key_name = self.page_id)
-                data.cache_and_db_write(urlObj, {'url_%s' % self.page_id:self.urlQuery})
+                data.cache_and_db_write(urlObj, {'url_%s' % self.page_id:data.get_url_query(self.page_id)})
 
             versionCount = db.GqlQuery("Select * from Entry where Ancestor \
                                         is Key('URL', '%s')" % self.page_id).count() + 1 #need to hit db for this. will be different for each post. 
            
             dbObj = data.Entry(parent = urlObj.key(), markup = markup, url = self.page_id, createdBy = self.username, versionNum = versionCount)
-            cacheDict = {self.page_id:self.pageQuery, "history_%s" % self.page_id:self.pageQuery}
+            cacheDict = {self.page_id:data.get_page_query(self.page_id), "history_%s" % self.page_id:data.get_page_query(self.page_id)}
             data.cache_and_db_write(dbObj,cacheDict) 
             self.redirect("%s" % self.page_id)
 
 class HistoryPage(Handler):
 
-    def get(self, dont_use_me):
+    def get(self, _unused):
         self.startup(self.request)
-        versions = data.read_from_cache_or_db("history_%s" % self.page_id, self.pageQuery, "all") 
+        versions = data.read_from_cache_or_db("history_%s" % self.page_id, data.get_page_query(self.page_id), "all") 
         logging.info("versions is %s" % versions)
         if not versions:
             logging.info("no history found for this page")
